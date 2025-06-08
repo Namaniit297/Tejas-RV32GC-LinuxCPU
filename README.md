@@ -27,7 +27,7 @@ This repository is dedicated to designing a synthesizable, modular RISC-V CPU RT
 
 ---
 
-### ✅ Week-by-Week Plan (Deadline: June 25)
+### ✅ Week-by-Week Plan 
 
 | Week | Deliverables |
 |------|--------------|
