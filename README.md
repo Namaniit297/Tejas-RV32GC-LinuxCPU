@@ -20,7 +20,7 @@ This repository is dedicated to designing a synthesizable, modular RISC-V CPU RT
 
 ## 🧭 Project Roadmap: From RV32I Core ➜ Linux-Capable Multicore SoC
 
-### ⚙️ STAGE 0: YOU ARE HERE – Non-Pipelined RV32I Core
+### ⚙️ STAGE 0: WE ARE HERE – Non-Pipelined RV32I Core
 - Multicycle, in-order RV32I core.
 - No interrupts, no CSRs, no MMU.
 - Runs basic bare-metal programs.
