@@ -1,4 +1,4 @@
-# 🚀 TEJAS_IITMadras_RISC-V_CPU_RTL
+# 🚀 Tejas-RV32-LinuxCPU
 
 🧠 An open-source, research-oriented RISC-V CPU RTL project inspired by [Tejas - IIT Madras](https://www.cse.iitm.ac.in/~tejas/), aimed at evolving from a minimal multicycle RV32I core into a full-fledged Linux-capable, multicore SoC, including MMU, caches, and out-of-order pipeline design.
 
