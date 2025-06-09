@@ -1,4 +1,4 @@
-module top_rv32i_core (
+module top_rv32i_core_dualport (
     input  wire        clk,
     input  wire        resetn
 );
@@ -42,31 +42,48 @@ module top_rv32i_core (
     // === Writeback mux ===
     wire [31:0] wb_data = memread ? mem_rdata : alu_result;
 
-    // === Fetch ===
+    // === Fetch Module ===
     fetch fetch_u (
-        .clk(clk), .resetn(resetn),
-        .Branch(branch), .Zero(zero_flag),
-        .instr_jal(instr_jal), .instr_jalr(instr_jalr),
-        .imm_B(imm_B), .imm_J(imm_J), .imm_I(imm_I),
+        .clk(clk), 
+        .resetn(resetn),
+        .Branch(branch), 
+        .Zero(zero_flag),
+        .instr_jal(instr_jal), 
+        .instr_jalr(instr_jalr),
+        .imm_B(imm_B), 
+        .imm_J(imm_J), 
+        .imm_I(imm_I),
         .rs1_data(rs1_data),
-        .pc(pc), .instr(instr), .pc_next(pc_next)
+        .pc(pc), 
+        .instr(instr), 
+        .pc_next(pc_next)
     );
 
     // === Decoder ===
     decoder decoder_u (
         .instr(instr),
-        .opcode(opcode), .funct3(funct3), .funct7(funct7),
-        .rs1(rs1), .rs2(rs2), .rd(rd),
-        .imm_I(imm_I), .imm_S(imm_S), .imm_B(imm_B), .imm_J(imm_J)
+        .opcode(opcode), 
+        .funct3(funct3), 
+        .funct7(funct7),
+        .rs1(rs1), 
+        .rs2(rs2), 
+        .rd(rd),
+        .imm_I(imm_I), 
+        .imm_S(imm_S), 
+        .imm_B(imm_B), 
+        .imm_J(imm_J)
     );
 
     // === Register File ===
     register_file #(.WIDTH(32)) regfile (
         .clk(clk),
         .we(regwrite),
-        .rs1(rs1), .rs2(rs2), .rd(rd),
+        .rs1(rs1), 
+        .rs2(rs2), 
+        .rd(rd),
         .wd(wb_data),
-        .rd1(rs1_data), .rd2(rs2_data)
+        .rd1(rs1_data), 
+        .rd2(rs2_data)
     );
 
     // === Control Unit ===
@@ -98,27 +115,60 @@ module top_rv32i_core (
         .less_flag(less_flag)
     );
 
-    // === Unified Cache (Dual Port, Byte Addressable) ===
-    unified_cache #(
+    // === Dual-Port Cache Interface ===
+    // Assume cache addr width = 16 bits, word addressable (drop [1:0])
+    localparam ADDR_WIDTH = 16;
+
+    // Instruction Port (Port 0)
+    wire [ADDR_WIDTH-1:0] instr_addr = pc[ADDR_WIDTH+1:2];
+    wire [31:0] instr_rdata;
+    wire        instr_read_en = 1'b1; // always reading instruction
+
+    // Data Port (Port 1)
+    wire [ADDR_WIDTH-1:0] data_addr = alu_result[ADDR_WIDTH+1:2];
+    wire [31:0] data_wdata = rs2_data;
+    wire [3:0]  data_strobe;
+    wire        data_write_en = memwrite;
+    wire        data_read_en = memread;
+
+    // Generate strobes based on store type and address offset
+    assign data_strobe = (store_type == 3'b000) ? (4'b0001 << addr_offset) : // SB
+                         (store_type == 3'b001) ? (addr_offset[1] ? 4'b1100 : 4'b0011) : // SH
+                         (store_type == 3'b010) ? 4'b1111 : 4'b0000; // SW
+
+    // Writeback data source: from data port read data or ALU result
+    wire [31:0] data_rdata;
+
+    wire [31:0] mem_read_data = memread ? data_rdata : alu_result;
+
+    // Instruction fetch read data wired to instr output
+    assign instr = instr_rdata;
+
+    // Writeback mux
+    assign wb_data = memread ? data_rdata : alu_result;
+
+    // === Dual-Port Cache Instantiation ===
+    dual_port_cache #(
         .DATA_WIDTH(32),
-        .ADDR_WIDTH(16)  // Adjust based on memory depth needed
-    ) unified_mem (
+        .ADDR_WIDTH(ADDR_WIDTH)
+    ) dcache (
         .clk(clk),
         .rst(~resetn),
 
-        // Dual Role Port: both instr fetch + data access
-        .addr(memread || memwrite ? alu_result : pc),
-        .wdata(rs2_data),
-        .strobe(strobe),
-        .write_en(memwrite),
-        .read_en(memread || ~memwrite),  // also allow read for instr fetch
-        .load_type(memread ? funct3 : 3'b100),  // default LW for instr
-        .rdata(mem_rdata)
-    );
+        // Port 0: Instruction Fetch (Read Only)
+        .port0_addr(instr_addr),
+        .port0_wdata(32'b0),
+        .port0_write_en(1'b0),
+        .port0_read_en(instr_read_en),
+        .port0_rdata(instr_rdata),
 
-    // === Byte Strobe Generator ===
-    assign strobe = (store_type == 3'b000) ? (4'b0001 << addr_offset) : // SB
-                    (store_type == 3'b001) ? (addr_offset[1] ? 4'b1100 : 4'b0011) : // SH
-                    (store_type == 3'b010) ? 4'b1111 : 4'b0000; // SW
+        // Port 1: Data (Load/Store)
+        .port1_addr(data_addr),
+        .port1_wdata(data_wdata),
+        .port1_write_en(data_write_en),
+        .port1_read_en(data_read_en),
+        .port1_strobe(data_strobe),
+        .port1_rdata(data_rdata)
+    );
 
 endmodule
