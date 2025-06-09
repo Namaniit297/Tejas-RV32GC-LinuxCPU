@@ -4,7 +4,7 @@
 //------------------------------------------------------------------------------
 // 1. Register File
 //------------------------------------------------------------------------------
-module reg_file (
+module register_file (
     input  wire        clock,
     input  wire        we,         // write enable
     input  wire [4:0]  rs1_addr,   // read port 1 address
