@@ -1,4 +1,4 @@
-module dual_port_unified_ram #(
+module dual_port_cache #(
     parameter ADDR_WIDTH = 16,     // 64KB
     parameter DATA_WIDTH = 32
 )(
