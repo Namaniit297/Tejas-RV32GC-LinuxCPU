@@ -1,147 +1,122 @@
+module ControlUnit(
+    input  wire [6:0]  opcode,
+    input  wire [2:0]  funct3,
+    input  wire [6:0]  funct7,
+    input  wire        imm_valid,
 
-//------------------------------------------------------------------------------
-// rv32i_control_unit.v
-// Combinational control unit for non-pipelined RV32I core.
-//------------------------------------------------------------------------------
-module rv32i_control_unit (
-    // one-hot instruction flags from decoder
-    input  wire instr_lui,
-    input  wire instr_auipc,
-    input  wire instr_jal,
-    input  wire instr_jalr,
-    input  wire instr_beq,
-    input  wire instr_bne,
-    input  wire instr_blt,
-    input  wire instr_bge,
-    input  wire instr_bltu,
-    input  wire instr_bgeu,
-    input  wire instr_lb,
-    input  wire instr_lh,
-    input  wire instr_lw,
-    input  wire instr_lbu,
-    input  wire instr_lhu,
-    input  wire instr_sb,
-    input  wire instr_sh,
-    input  wire instr_sw,
-    input  wire instr_addi,
-    input  wire instr_slti,
-    input  wire instr_sltiu,
-    input  wire instr_xori,
-    input  wire instr_ori,
-    input  wire instr_andi,
-    input  wire instr_slli,
-    input  wire instr_srli,
-    input  wire instr_srai,
-    input  wire instr_add,
-    input  wire instr_sub,
-    input  wire instr_sll,
-    input  wire instr_slt,
-    input  wire instr_sltu,
-    input  wire instr_xor,
-    input  wire instr_srl,
-    input  wire instr_sra,
-    input  wire instr_or,
-    input  wire instr_and,
-    input  wire instr_fence,
-    input  wire instr_fence_tso,
-    input  wire instr_pause,
-    input  wire instr_ecall,
-    input  wire instr_ebreak,
-    input  wire instr_csrrw,
-    input  wire instr_csrrs,
-    input  wire instr_csrrc,
-    input  wire instr_csrrwi,
-    input  wire instr_csrrsi,
-    input  wire instr_csrrci,
-
-    // outputs to datapath
-    output wire RegWrite,
-    output wire MemRead,
-    output wire MemWrite,
-    output wire MemToReg,
-    output wire ALUSrc,
-    output wire Branch,
-    output wire Jump,
-    output wire LUI_AUIPC,
-    output wire [3:0] ALUOp,
-    output wire Fence,
-    output wire Ecall,
-    output wire Ebreak,
-    output wire Pause,
-    output wire FenceTSO,
-    output wire CSR
+    output reg  [3:0]  alu_control,
+    output reg         sgn,
+    output reg         reg_write,
+    output reg         mem_read,
+    output reg         mem_write,
+    output reg         branch,
+    output reg         jump,
+    output reg         alu_src,
+    output reg  [1:0]  pc_src
 );
 
-    // write-back occurs for:
-    //   R-type, I-type ALU, loads, JAL/JALR, LUI/AUIPC, CSR writes
-    assign RegWrite =
-           instr_add  | instr_sub  | instr_sll  | instr_slt  | instr_sltu
-        | instr_xor  | instr_srl  | instr_sra  | instr_or   | instr_and
-        | instr_addi | instr_slti | instr_sltiu| instr_xori| instr_ori
-        | instr_andi| instr_slli | instr_srli | instr_srai
-        | instr_lb   | instr_lh   | instr_lw   | instr_lbu  | instr_lhu
-        | instr_jal  | instr_jalr | instr_lui  | instr_auipc
-        | instr_csrrw | instr_csrrs | instr_csrrc
-        | instr_csrrwi| instr_csrrsi| instr_csrrci;
+    always @(*) begin
+        // Default values
+        alu_control = 4'b0000;
+        sgn         = 1'b0;
+        reg_write   = 1'b0;
+        mem_read    = 1'b0;
+        mem_write   = 1'b0;
+        branch      = 1'b0;
+        jump        = 1'b0;
+        alu_src     = 1'b0;  // 0 = reg, 1 = imm
+        pc_src      = 2'b00; // 00 = PC+4 default
 
-    // memory read for loads only
-    assign MemRead  = instr_lb | instr_lh | instr_lw | instr_lbu | instr_lhu;
+        case(opcode)
+            7'b0110011: begin // R-type (ADD, SUB, AND, OR, etc)
+                reg_write = 1'b1;
+                alu_src   = 1'b0; // ALU second operand from reg
 
-    // memory write for stores only
-    assign MemWrite = instr_sb | instr_sh | instr_sw;
+                case(funct3)
+                    3'b000: alu_control = (funct7 == 7'b0100000) ? 4'b0100 : 4'b0010; // SUB : ADD
+                    3'b111: alu_control = 4'b0000; // AND
+                    3'b110: alu_control = 4'b0001; // OR
+                    3'b100: alu_control = 4'b0111; // XOR
+                    3'b001: alu_control = 4'b0011; // SLL
+                    3'b101: begin
+                        alu_control = 4'b0101; 
+                        sgn = (funct7 == 7'b0100000); // SRL/SRA signed if funct7 = 0x20
+                    end
+                    3'b010: begin
+                        alu_control = 4'b1000; 
+                        sgn = 1'b1; // SLT signed
+                    end
+                    3'b011: begin
+                        alu_control = 4'b1000; 
+                        sgn = 1'b0; // SLTU unsigned
+                    end
+                    default: alu_control = 4'b0000;
+                endcase
+            end
 
-    // write-back data comes from memory only on loads
-    assign MemToReg = MemRead;
+            7'b0010011: begin // I-type ALU (ADDI, SLTI, etc)
+                reg_write = 1'b1;
+                alu_src   = 1'b1; // ALU second operand from imm
 
-    // ALU second operand is immediate for:
-    //   I-type ALU, loads, stores, JALR, AUIPC
-    assign ALUSrc =
-           instr_addi | instr_slti | instr_sltiu | instr_xori
-        | instr_ori   | instr_andi | instr_slli   | instr_srli | instr_srai
-        | MemRead     | MemWrite    | instr_jalr  | instr_auipc;
+                case(funct3)
+                    3'b000: alu_control = 4'b0010; // ADDI
+                    3'b111: alu_control = 4'b0000; // ANDI
+                    3'b110: alu_control = 4'b0001; // ORI
+                    3'b100: alu_control = 4'b0111; // XORI
+                    3'b001: alu_control = 4'b0011; // SLLI
+                    3'b101: begin
+                        alu_control = 4'b0101; 
+                        sgn = (funct7 == 7'b0100000); // SRLI/SRAI
+                    end
+                    3'b010: begin
+                        alu_control = 4'b1000; 
+                        sgn = 1'b1; // SLTI
+                    end
+                    3'b011: begin
+                        alu_control = 4'b1000; 
+                        sgn = 1'b0; // SLTIU
+                    end
+                    default: alu_control = 4'b0000;
+                endcase
+            end
 
-    // any branch instruction
-    assign Branch = instr_beq  | instr_bne
-                  | instr_blt  | instr_bge
-                  | instr_bltu | instr_bgeu;
+            7'b0000011: begin // Load
+                reg_write = 1'b1;
+                mem_read  = 1'b1;
+                alu_src   = 1'b1;  // address = reg + imm
+                alu_control = 4'b0010; // ADD to calculate address
+            end
 
-    // any jump
-    assign Jump = instr_jal | instr_jalr;
+            7'b0100011: begin // Store
+                mem_write = 1'b1;
+                alu_src   = 1'b1;
+                alu_control = 4'b0010; // ADD to calculate address
+            end
 
-    // select U-type path (in EX stage you’ll use imm_U)
-    assign LUI_AUIPC = instr_lui | instr_auipc;
+            7'b1100011: begin // Branch
+                branch = 1'b1;
+                alu_src = 1'b0; // compare reg-reg
+                alu_control = 4'b1000; // set less than for comparison (or you can customize)
+                pc_src = 2'b01; // branch taken address
+            end
 
-    // ALU operation code
-    // (must match your ALU’s case encoding)
-    // priority: use R-type/ I-type ALU functions
-    wire isR = instr_add|instr_sub|instr_sll|instr_slt|instr_sltu
-            |instr_xor|instr_srl|instr_sra|instr_or|instr_and;
-    wire isI = instr_addi|instr_slti|instr_sltiu|instr_xori
-            |instr_ori|instr_andi|instr_slli|instr_srli|instr_srai;
-    wire isCMP = instr_slt|instr_sltu|instr_slti|instr_sltiu;
-    wire isSHIFT = instr_sll|instr_srl|instr_sra
-                |instr_slli|instr_srli|instr_srai;
+            7'b1101111: begin // JAL
+                jump = 1'b1;
+                reg_write = 1'b1;
+                alu_src = 1'b1; // use imm for PC calculation
+                pc_src = 2'b10; // jump target
+            end
 
-    assign ALUOp = 
-           (instr_add | instr_addi) ? 4'h2 :  // ADD
-           (instr_sub)               ? 4'h6 :  // SUB
-           (instr_and | instr_andi)  ? 4'h4 :  // AND
-           (instr_or  | instr_ori)   ? 4'h5 :  // OR
-           (instr_xor | instr_xori)  ? 4'h1 :  // XOR
-           (instr_sll | instr_slli)  ? 4'h0 :  // SLL
-           (instr_srl | instr_srli)  ? 4'h3 :  // SRL
-           (instr_sra | instr_srai)  ? 4'hB :  // SRA
-           (instr_slt | instr_slti)  ? 4'h7 :  // SLT
-           (instr_sltu| instr_sltiu) ? 4'h8 :  // SLTU
-           4'h2;                              // default ADD
+            7'b1100111: begin // JALR
+                jump = 1'b1;
+                reg_write = 1'b1;
+                alu_src = 1'b1;
+                pc_src = 2'b10;
+            end
 
-    // pass-through special signals
-    assign Fence     = instr_fence;
-    assign FenceTSO  = instr_fence_tso;
-    assign Pause     = instr_pause;
-    assign Ecall     = instr_ecall;
-    assign Ebreak    = instr_ebreak;
-    assign CSR       = instr_csrrw|instr_csrrs|instr_csrrc
-                     |instr_csrrwi|instr_csrrsi|instr_csrrci;
-
+            default: begin
+                // default no-op
+            end
+        endcase
+    end
 endmodule
