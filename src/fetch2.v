@@ -1,53 +1,39 @@
 module fetch (
     input  wire        clk,
     input  wire        resetn,
+
+    // Control signals for next PC selection
     input  wire        Branch,
     input  wire        Zero,
     input  wire        instr_jal,
     input  wire        instr_jalr,
-    input  wire [31:0] imm_B,
-    input  wire [31:0] imm_J,
-    input  wire [31:0] imm_I,
-    input  wire [31:0] rs1_data,
-    output reg  [31:0] pc,
-    output wire [31:0] instr,
-    output reg  [31:0] pc_next
+
+    // ALU-calculated next PC addresses for branch/jump
+    input  wire [31:0] branch_target,
+    input  wire [31:0] jal_target,
+    input  wire [31:0] jalr_target,
+
+    output reg  [31:0] pc
 );
 
-    reg [31:0] pc_reg;
+    wire [31:0] pc_plus_4;
+    wire [31:0] pc_next;
 
-    // Instruction Memory Interface (via unified_cache in top)
+    // Calculate pc + 4 internally
+    assign pc_plus_4 = pc + 4;
 
-    // For simplicity, instr is a wire connected outside; here we just output pc
+    // Mux to select next PC based on control signals
+    assign pc_next = instr_jal    ? jal_target    :
+                     instr_jalr   ? jalr_target   :
+                     (Branch && Zero) ? branch_target :
+                     pc_plus_4;
 
+    // PC register update
     always @(posedge clk or negedge resetn) begin
-        if (!resetn) begin
-            pc <= 0;
-        end else begin
+        if (!resetn)
+            pc <= 32'b0;
+        else
             pc <= pc_next;
-        end
-    end
-
-    always @(*) begin
-        // Default PC+4
-        pc_next = pc + 4;
-
-        // Branch Taken?
-        if (Branch) begin
-            if (Zero) begin
-                pc_next = pc + imm_B;
-            end
-        end
-
-        // JAL
-        if (instr_jal) begin
-            pc_next = pc + imm_J;
-        end
-
-        // JALR
-        if (instr_jalr) begin
-            pc_next = (rs1_data + imm_I) & 32'hfffffffe;
-        end
     end
 
 endmodule
