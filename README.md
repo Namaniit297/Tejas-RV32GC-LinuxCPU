@@ -109,19 +109,6 @@ This repository is dedicated to designing a synthesizable, modular RISC-V CPU RT
 - Documentation contributions for hardware/software stack
 - Multi-core SoC development and Linux bring-up
 
----
-
-## 📚 References
-
-- [Tejas RISC-V Architecture, IIT Madras](https://www.cse.iitm.ac.in/~tejas/)
-- [RISC-V Privileged Architecture v1.12](https://github.com/riscv/riscv-isa-manual)
-- [Buildroot Linux](https://buildroot.org/)
-- [riscv-arch-test](https://github.com/riscv/riscv-arch-test)
-- [CVA6](https://github.com/openhwgroup/cva6)
-- [BlackParrot](https://github.com/black-parrot/black-parrot)
-
----
-
 ## 🔐 License
 
 Released under [MIT License](LICENSE).
